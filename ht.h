@@ -102,10 +102,10 @@ public:
     // To be completed
     HASH_INDEX_T next() 
     {
-        HASH_INDEX_T next = (this -> start + this -> numProbes * dhstep_) % this -> m_;
+        HASH_INDEX_T next = (this -> start_ + this -> numProbes_ * dhstep_) % this -> m_;
         if (this -> numProbes_ != 0 && next == this -> start_)
             return this -> npos;
-        ++this -> numProbes;
+        ++this -> numProbes_;
         return next;
     }
 };
@@ -272,7 +272,9 @@ private:
     HASH_INDEX_T mIndex_;  // index to CAPACITIES
 
     // ADD MORE DATA MEMBERS HERE, AS NECESSARY
-
+    double resizeAlpha_;
+    size_t activeItems_;
+    size_t deletedItems_;
 };
 
 // ----------------------------------------------------------------------------
@@ -296,6 +298,10 @@ HashTable<K,V,Prober,Hash,KEqual>::HashTable(
 {
     // Initialize any other data members as necessary
     table_ = std::vector<HashItem*>(CAPACITIES[0]);
+    resizeAlpha_ = resizeAlpha;
+    activeItems_ = 0;
+    deletedItems_ = 0;
+    mIndex_ = 0;
 }
 
 // To be completed
@@ -315,10 +321,7 @@ HashTable<K,V,Prober,Hash,KEqual>::~HashTable()
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 bool HashTable<K,V,Prober,Hash,KEqual>::empty() const
 {
-    for (HashTable<K,V>::HashItem* const& item : table_)
-        if (item != nullptr && !item->deleted)
-            return false;
-    return true;
+    return activeItems_ == 0;
 }
 
 
@@ -326,31 +329,38 @@ bool HashTable<K,V,Prober,Hash,KEqual>::empty() const
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 size_t HashTable<K,V,Prober,Hash,KEqual>::size() const
 {
-    size_t count = 0;
-    for (HashTable<K,V>::HashItem* const& item : table_)
-        if (item != nullptr && !item->deleted)
-            count++;
-    return count;
+    return activeItems_;
 }
 
 // To be completed
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 void HashTable<K,V,Prober,Hash,KEqual>::insert(const ItemType& p)
 {
-    if ((size() + 1) / (double)CAPACITIES[mIndex_] >= )
+    if ((activeItems_ + deletedItems_) / (double)CAPACITIES[mIndex_] >= resizeAlpha_)
         resize();
-
-
+    HASH_INDEX_T pos = probe(p.first);
+    if (pos == npos)
+        throw std::logic_error("Can't find a location!");
+    if (table_[pos] == nullptr)
+    {
+        table_[pos] = new HashItem(p);
+        activeItems_++;
+    }
+    else if (!table_[pos] -> deleted && kequal_(table_[pos] -> item.first, p.first))
+        table_[pos] -> item.second = p.second;
 }
 
 // To be completed
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 void HashTable<K,V,Prober,Hash,KEqual>::remove(const KeyType& key)
 {
-
-
+    HashTable<K,V,Prober,Hash,KEqual>::HashItem* item = internalFind(key);
+    if (item == nullptr || item -> deleted)
+        return;
+    item -> deleted = true;
+    deletedItems_++;
+    activeItems_--;
 }
-
 
 // Complete
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
@@ -422,8 +432,33 @@ typename HashTable<K,V,Prober,Hash,KEqual>::HashItem* HashTable<K,V,Prober,Hash,
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 void HashTable<K,V,Prober,Hash,KEqual>::resize()
 {
-
-    
+    mIndex_++;
+    if (mIndex_ >= sizeof(CAPACITIES)/sizeof(CAPACITIES[0]))
+        throw std::logic_error("Out of size");
+    deletedItems_ = 0;
+    activeItems_ = 0;
+    std::vector<HashItem*> oldTable = table_;
+    for (int i = oldTable.size() - 1; i >= 0; i--)
+    {
+        if (oldTable[i] == nullptr)
+        {
+            oldTable.erase(oldTable.begin() + i);
+            continue;
+        }
+        if (oldTable[i] -> deleted)
+        {
+            HashItem * temp = oldTable[i];
+            oldTable.erase(oldTable.begin() + i);
+            delete temp;
+        }
+    }
+    table_ = std::vector<HashItem*>(CAPACITIES[mIndex_], nullptr);
+    for (HashItem * item : oldTable)
+    {
+        HASH_INDEX_T loc = probe(item->item.first);
+        table_[loc] = item;
+        activeItems_++;
+    }
 }
 
 // Almost complete
